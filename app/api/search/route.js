@@ -6,7 +6,7 @@ export async function POST(request) {
   try {
     const { category, freeText, location } = await request.json()
 
-    // Step 1: Geocode the location using Google Places
+    // Step 1: Geocode the location
     const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(location)}&key=${process.env.GOOGLE_PLACES_API_KEY}`
     const geocodeRes = await fetch(geocodeUrl)
     const geocodeData = await geocodeRes.json()
@@ -17,7 +17,7 @@ export async function POST(request) {
 
     const { lat, lng } = geocodeData.results[0].geometry.location
 
-    // Step 2: Search for restaurants near that location
+    // Step 2: Search for restaurants
     const placesUrl = `https://places.googleapis.com/v1/places:searchNearby`
     const placesRes = await fetch(placesUrl, {
       method: 'POST',
@@ -44,7 +44,7 @@ export async function POST(request) {
       return Response.json({ error: 'No restaurants found in this area. Try a different location.' }, { status: 400 })
     }
 
-    // Step 3: Format restaurants for Claude
+    // Step 3: Format for Claude
     const restaurantList = placesData.places.map((p, i) => ({
       index: i + 1,
       name: p.displayName?.text || 'Unknown',
@@ -54,7 +54,7 @@ export async function POST(request) {
       description: p.editorialSummary?.text || '',
     }))
 
-    // Step 4: Ask Claude to rank and explain
+    // Step 4: Ask Claude to rank
     const purpose = [category, freeText].filter(Boolean).join(' — ')
 
     const message = await anthropic.messages.create({
@@ -71,7 +71,9 @@ ${JSON.stringify(restaurantList, null, 2)}
 
 Please select the top 5 most suitable restaurants for the user's purpose. For each one, explain in 1-2 sentences why it suits their needs.
 
-Respond ONLY with a valid JSON object in this exact format, no other text:
+You must respond with ONLY a raw JSON object. No markdown, no backticks, no code blocks, no explanation. Just the raw JSON object starting with { and ending with }.
+
+Use this exact format:
 {
   "summary": "A 1-2 sentence overall recommendation summary for the user",
   "restaurants": [
@@ -88,7 +90,7 @@ Respond ONLY with a valid JSON object in this exact format, no other text:
       ],
     })
 
-    // Step 5: Parse Claude's response and return
+    // Step 5: Parse response
     const raw = message.content[0].text
     const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
     const parsed = JSON.parse(cleaned)
