@@ -90,7 +90,8 @@ Respond ONLY with a valid JSON object in this exact format, no other text:
 
     // Step 5: Parse Claude's response and return
     const raw = message.content[0].text
-    const parsed = JSON.parse(raw)
+    const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+    const parsed = JSON.parse(cleaned)
 
     return Response.json(parsed)
   } catch (err) {
