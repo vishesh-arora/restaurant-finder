@@ -2,6 +2,15 @@ import Anthropic from '@anthropic-ai/sdk'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
+const CATEGORY_CONTEXT = {
+  romantic: 'fine dining, intimate ambiance, candlelit restaurants, upscale cuisine',
+  family: 'family-friendly restaurants, comfortable seating, varied menu for all ages',
+  birthday: 'celebratory restaurants, good ambiance, desserts, lively atmosphere',
+  brunch: 'brunch spots, cafes, breakfast restaurants, morning dining',
+  drinks: 'bars, pubs, lounges, breweries, places that serve alcohol and cocktails — NOT cafes or coffee shops',
+  lunch: 'professional restaurants suitable for business lunch, quiet enough for conversation',
+}
+
 export async function POST(request) {
   try {
     const { category, freeText, location } = await request.json()
@@ -16,20 +25,25 @@ export async function POST(request) {
 
     const { lat, lng } = geocodeData.results[0].geometry.location
 
+    // Use bar type for drinks category, restaurant for others
+    const includedTypes = category === 'drinks'
+      ? ['bar', 'pub', 'night_club', 'wine_bar']
+      : ['restaurant']
+
     const placesRes = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY,
-        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.rating,places.priceLevel,places.editorialSummary,places.photos',
+        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.rating,places.priceLevel,places.editorialSummary,places.photos,places.types',
       },
       body: JSON.stringify({
-        includedTypes: ['restaurant'],
+        includedTypes,
         maxResultCount: 20,
         locationRestriction: {
           circle: {
             center: { latitude: lat, longitude: lng },
-            radius: 2000,
+            radius: 1500,
           },
         },
       }),
@@ -38,7 +52,7 @@ export async function POST(request) {
     const placesData = await placesRes.json()
 
     if (!placesData.places || placesData.places.length === 0) {
-      return Response.json({ error: 'No restaurants found in this area. Try a different location.' }, { status: 400 })
+      return Response.json({ error: 'No results found in this area. Try a different location.' }, { status: 400 })
     }
 
     const restaurantList = placesData.places.map((p, i) => ({
@@ -48,10 +62,12 @@ export async function POST(request) {
       rating: p.rating || 'No rating',
       priceLevel: p.priceLevel || null,
       description: p.editorialSummary?.text || '',
+      types: p.types || [],
       photoName: p.photos?.[0]?.name || null,
     }))
 
     const purpose = [category, freeText].filter(Boolean).join(' — ')
+    const categoryContext = CATEGORY_CONTEXT[category] || ''
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
@@ -59,27 +75,31 @@ export async function POST(request) {
       messages: [
         {
           role: 'user',
-          content: `You are a restaurant recommendation expert. A user is looking for restaurants for: "${purpose}".
+          content: `You are a restaurant recommendation expert. A user is looking for: "${purpose}".
 
-Here are restaurants in ${location}:
+Context for this occasion: ${categoryContext}
+Additional user notes: ${freeText || 'none'}
+
+Here are places in ${location}:
 
 ${JSON.stringify(restaurantList, null, 2)}
 
-Select the top 6 most suitable restaurants. For each, explain in 1-2 sentences why it suits the user's purpose.
+Select the top 6 most suitable places that genuinely match the occasion and context above. 
+For "drinks" occasions, ONLY include bars, pubs, lounges or places that clearly serve alcohol. Exclude cafes and coffee shops entirely.
+For each place, explain in 1-2 sentences why it suits the user's purpose.
 
-IMPORTANT: You must respond with ONLY a raw JSON object. No markdown. No backticks. No extra text. No trailing commas. Just valid JSON starting with { and ending with }.
+IMPORTANT: Respond with ONLY raw valid JSON. No markdown. No backticks. No trailing commas. Just JSON starting with { and ending with }.
 
-Use exactly this format:
 {
-  "summary": "1-2 sentence overall recommendation summary",
+  "summary": "1-2 sentence overall summary",
   "restaurants": [
     {
       "index": 1,
-      "name": "Restaurant Name",
+      "name": "Place Name",
       "address": "Full address",
       "rating": 4.5,
       "priceLevel": 2,
-      "reason": "Why this suits the user's purpose"
+      "reason": "Why this suits the occasion"
     }
   ]
 }`,
