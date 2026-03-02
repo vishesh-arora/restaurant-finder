@@ -35,7 +35,7 @@ export async function POST(request) {
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY,
-        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.rating,places.priceLevel,places.editorialSummary,places.photos,places.types',
+        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.priceLevel,places.editorialSummary,places.photos,places.types',
       },
       body: JSON.stringify({
         includedTypes,
@@ -63,6 +63,7 @@ export async function POST(request) {
       priceLevel: p.priceLevel || null,
       description: p.editorialSummary?.text || '',
       types: p.types || [],
+      userRatingCount: p.userRatingCount || null,
       photoName: p.photos?.[0]?.name || null,
     }))
 
@@ -126,7 +127,7 @@ IMPORTANT: Respond with ONLY raw valid JSON. No markdown. No backticks. No trail
         if (original?.photoName) {
           photoUrl = `${photoBaseUrl}${original.photoName}/media?maxHeightPx=400&maxWidthPx=800&key=${process.env.GOOGLE_PLACES_API_KEY}&skipHttpRedirect=false`
         }
-        return { ...r, photoUrl }
+        return { ...r, photoUrl, userRatingCount: original?.userRatingCount || null }
       })
     )
 
