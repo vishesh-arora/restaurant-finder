@@ -6,7 +6,6 @@ export async function POST(request) {
   try {
     const { category, freeText, location } = await request.json()
 
-    // Step 1: Geocode the location
     const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(location)}&key=${process.env.GOOGLE_PLACES_API_KEY}`
     const geocodeRes = await fetch(geocodeUrl)
     const geocodeData = await geocodeRes.json()
@@ -17,7 +16,6 @@ export async function POST(request) {
 
     const { lat, lng } = geocodeData.results[0].geometry.location
 
-    // Step 2: Search for restaurants
     const placesRes = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
       method: 'POST',
       headers: {
@@ -43,7 +41,6 @@ export async function POST(request) {
       return Response.json({ error: 'No restaurants found in this area. Try a different location.' }, { status: 400 })
     }
 
-    // Step 3: Format for Claude
     const restaurantList = placesData.places.map((p, i) => ({
       index: i + 1,
       name: p.displayName?.text || 'Unknown',
@@ -54,12 +51,11 @@ export async function POST(request) {
       photoName: p.photos?.[0]?.name || null,
     }))
 
-    // Step 4: Ask Claude to rank — return 6 results
     const purpose = [category, freeText].filter(Boolean).join(' — ')
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
+      max_tokens: 1500,
       messages: [
         {
           role: 'user',
@@ -71,7 +67,9 @@ ${JSON.stringify(restaurantList, null, 2)}
 
 Select the top 6 most suitable restaurants. For each, explain in 1-2 sentences why it suits the user's purpose.
 
-Respond with ONLY a raw JSON object, no markdown, no backticks, just raw JSON starting with { and ending with }:
+IMPORTANT: You must respond with ONLY a raw JSON object. No markdown. No backticks. No extra text. No trailing commas. Just valid JSON starting with { and ending with }.
+
+Use exactly this format:
 {
   "summary": "1-2 sentence overall recommendation summary",
   "restaurants": [
@@ -89,13 +87,17 @@ Respond with ONLY a raw JSON object, no markdown, no backticks, just raw JSON st
       ],
     })
 
-    // Step 5: Parse Claude response
     const raw = message.content[0].text
     const jsonMatch = raw.match(/\{[\s\S]*\}/)
     if (!jsonMatch) throw new Error('Invalid response from AI')
-    const parsed = JSON.parse(jsonMatch[0])
 
-    // Step 6: Attach photo URLs
+    const cleaned = jsonMatch[0]
+      .replace(/,\s*\]/g, ']')
+      .replace(/,\s*\}/g, '}')
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ')
+
+    const parsed = JSON.parse(cleaned)
+
     const photoBaseUrl = 'https://places.googleapis.com/v1/'
     const results = await Promise.all(
       parsed.restaurants.map(async (r) => {
