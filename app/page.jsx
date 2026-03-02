@@ -3,28 +3,27 @@
 import { useState } from 'react'
 
 const CATEGORIES = [
-  { id: 'romantic', label: '💑 Romantic Dinner' },
-  { id: 'business', label: '💼 Business Lunch' },
-  { id: 'family', label: '👨‍👩‍👧 Family Outing' },
-  { id: 'birthday', label: '🎂 Birthday Celebration' },
-  { id: 'casual', label: '😊 Casual Hangout' },
-  { id: 'solo', label: '🧘 Solo Dining' },
-  { id: 'brunch', label: '🥂 Brunch' },
-  { id: 'budget', label: '💰 Budget Meal' },
+  { id: 'romantic', label: 'Romantic Dinner' },
+  { id: 'family', label: 'Family Outing' },
+  { id: 'birthday', label: 'Birthday Celebration' },
+  { id: 'brunch', label: 'Brunch' },
+  { id: 'drinks', label: 'Drinks with Friends' },
+  { id: 'lunch', label: 'Lunch with Colleagues' },
 ]
 
 export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState(null)
   const [freeText, setFreeText] = useState('')
   const [location, setLocation] = useState('')
-  const [results, setResults] = useState([])
+  const [allResults, setAllResults] = useState([])
+  const [displayed, setDisplayed] = useState(3)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [summary, setSummary] = useState('')
 
   const handleSearch = async () => {
     if (!selectedCategory && !freeText) {
-      setError('Please select a category or describe what you are looking for.')
+      setError('Please select an occasion or describe what you are looking for.')
       return
     }
     if (!location) {
@@ -34,8 +33,9 @@ export default function Home() {
 
     setLoading(true)
     setError(null)
-    setResults([])
+    setAllResults([])
     setSummary('')
+    setDisplayed(3)
 
     try {
       const response = await fetch('/api/search', {
@@ -45,10 +45,9 @@ export default function Home() {
       })
 
       const data = await response.json()
-
       if (!response.ok) throw new Error(data.error || 'Something went wrong')
 
-      setResults(data.restaurants)
+      setAllResults(data.restaurants)
       setSummary(data.summary)
     } catch (err) {
       setError(err.message)
@@ -57,67 +56,103 @@ export default function Home() {
     }
   }
 
+  const visibleResults = allResults.slice(0, displayed)
+  const hasMore = displayed < allResults.length
+
+  const accent = '#B22222'
+  const accentHover = '#cc2222'
+  const cardBg = '#1e1e1e'
+  const borderColor = '#2a2a2a'
+
   return (
-    <main style={{ maxWidth: '700px', margin: '0 auto', padding: '2rem 1rem' }}>
-      <h1 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '0.5rem' }}>
-        🍽️ Restaurant Finder
-      </h1>
-      <p style={{ color: '#6b7280', marginBottom: '2rem' }}>
-        Find the perfect restaurant for any occasion
-      </p>
+    <main style={{ maxWidth: '720px', margin: '0 auto', padding: '2.5rem 1.25rem' }}>
+
+      {/* Hero */}
+      <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
+        <div style={{
+          fontSize: '3rem',
+          fontWeight: '800',
+          letterSpacing: '-1px',
+          background: `linear-gradient(135deg, #ffffff 30%, ${accent})`,
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          marginBottom: '0.5rem',
+        }}>
+          Restaurant Finder
+        </div>
+        <p style={{
+          color: '#aaa',
+          fontSize: '1.05rem',
+          letterSpacing: '0.5px',
+        }}>
+          Discover the perfect place for every occasion
+        </p>
+        <div style={{
+          width: '60px',
+          height: '3px',
+          backgroundColor: accent,
+          margin: '1rem auto 0',
+          borderRadius: '2px',
+        }} />
+      </div>
 
       {/* Category Picker */}
-      <section style={{ marginBottom: '1.5rem' }}>
-        <h2 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.75rem' }}>
+      <section style={{ marginBottom: '1.75rem' }}>
+        <h2 style={{ fontSize: '0.85rem', fontWeight: '600', color: '#aaa', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.75rem' }}>
           What's the occasion?
         </h2>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => setSelectedCategory(cat.id === selectedCategory ? null : cat.id)}
-              style={{
-                padding: '0.5rem 1rem',
-                borderRadius: '999px',
-                border: '2px solid',
-                borderColor: selectedCategory === cat.id ? '#111827' : '#e5e7eb',
-                backgroundColor: selectedCategory === cat.id ? '#111827' : '#fff',
-                color: selectedCategory === cat.id ? '#fff' : '#111827',
-                fontWeight: '500',
-                fontSize: '0.9rem',
-                transition: 'all 0.2s',
-              }}
-            >
-              {cat.label}
-            </button>
-          ))}
+          {CATEGORIES.map((cat) => {
+            const isSelected = selectedCategory === cat.id
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setSelectedCategory(isSelected ? null : cat.id)}
+                style={{
+                  padding: '0.5rem 1.1rem',
+                  borderRadius: '999px',
+                  border: `2px solid ${isSelected ? accent : '#333'}`,
+                  backgroundColor: isSelected ? accent : 'transparent',
+                  color: isSelected ? '#fff' : '#ccc',
+                  fontWeight: '500',
+                  fontSize: '0.9rem',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {cat.label}
+              </button>
+            )
+          })}
         </div>
       </section>
 
       {/* Free Text */}
-      <section style={{ marginBottom: '1.5rem' }}>
-        <h2 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.75rem' }}>
+      <section style={{ marginBottom: '1.75rem' }}>
+        <h2 style={{ fontSize: '0.85rem', fontWeight: '600', color: '#aaa', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.75rem' }}>
           Tell us more (optional)
         </h2>
         <textarea
-          placeholder="e.g. looking for a quiet rooftop with good wine and vegetarian options..."
+          placeholder="e.g. quiet rooftop with good wine and vegetarian options..."
           value={freeText}
           onChange={(e) => setFreeText(e.target.value)}
           rows={3}
           style={{
             width: '100%',
-            padding: '0.75rem',
-            borderRadius: '0.5rem',
-            border: '2px solid #e5e7eb',
+            padding: '0.85rem',
+            borderRadius: '0.6rem',
+            border: `1.5px solid #333`,
+            backgroundColor: cardBg,
+            color: '#f0f0f0',
             fontSize: '0.95rem',
             resize: 'vertical',
+            outline: 'none',
           }}
         />
       </section>
 
       {/* Location */}
-      <section style={{ marginBottom: '1.5rem' }}>
-        <h2 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.75rem' }}>
+      <section style={{ marginBottom: '1.75rem' }}>
+        <h2 style={{ fontSize: '0.85rem', fontWeight: '600', color: '#aaa', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.75rem' }}>
           Where?
         </h2>
         <input
@@ -125,12 +160,16 @@ export default function Home() {
           placeholder="e.g. Bandra, Mumbai or Koramangala, Bangalore"
           value={location}
           onChange={(e) => setLocation(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
           style={{
             width: '100%',
-            padding: '0.75rem',
-            borderRadius: '0.5rem',
-            border: '2px solid #e5e7eb',
+            padding: '0.85rem',
+            borderRadius: '0.6rem',
+            border: `1.5px solid #333`,
+            backgroundColor: cardBg,
+            color: '#f0f0f0',
             fontSize: '0.95rem',
+            outline: 'none',
           }}
         />
       </section>
@@ -141,15 +180,16 @@ export default function Home() {
         disabled={loading}
         style={{
           width: '100%',
-          padding: '0.85rem',
-          backgroundColor: '#111827',
+          padding: '0.9rem',
+          backgroundColor: loading ? '#7a1111' : accent,
           color: '#fff',
-          borderRadius: '0.5rem',
+          borderRadius: '0.6rem',
           border: 'none',
           fontSize: '1rem',
-          fontWeight: '600',
+          fontWeight: '700',
+          letterSpacing: '0.5px',
           marginBottom: '2rem',
-          opacity: loading ? 0.7 : 1,
+          transition: 'background-color 0.2s',
         }}
       >
         {loading ? 'Finding restaurants...' : 'Find Restaurants'}
@@ -157,18 +197,18 @@ export default function Home() {
 
       {/* Error */}
       {error && (
-        <p style={{ color: '#dc2626', marginBottom: '1rem' }}>{error}</p>
+        <p style={{ color: '#ff6b6b', marginBottom: '1rem', fontSize: '0.95rem' }}>{error}</p>
       )}
 
       {/* Summary */}
       {summary && (
         <div style={{
-          backgroundColor: '#f0fdf4',
-          border: '1px solid #bbf7d0',
-          borderRadius: '0.5rem',
-          padding: '1rem',
-          marginBottom: '1.5rem',
-          color: '#166534',
+          backgroundColor: '#1a0a0a',
+          border: `1px solid ${accent}`,
+          borderRadius: '0.6rem',
+          padding: '1rem 1.25rem',
+          marginBottom: '1.75rem',
+          color: '#ffaaaa',
           fontSize: '0.95rem',
           lineHeight: '1.6',
         }}>
@@ -177,58 +217,96 @@ export default function Home() {
       )}
 
       {/* Results */}
-      {results.length > 0 && (
+      {visibleResults.length > 0 && (
         <section>
-          <h2 style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '1rem' }}>
+          <h2 style={{ fontSize: '0.85rem', fontWeight: '600', color: '#aaa', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '1rem' }}>
             Top Picks
           </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {results.map((r, i) => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            {visibleResults.map((r, i) => (
               <div
                 key={i}
                 style={{
-                  backgroundColor: '#fff',
-                  border: '1px solid #e5e7eb',
+                  backgroundColor: cardBg,
+                  border: `1px solid ${borderColor}`,
                   borderRadius: '0.75rem',
-                  padding: '1.25rem',
+                  overflow: 'hidden',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <h3 style={{ fontWeight: '600', fontSize: '1.05rem' }}>{r.name}</h3>
-                  <span style={{
-                    backgroundColor: '#fef9c3',
-                    color: '#854d0e',
-                    padding: '0.2rem 0.5rem',
-                    borderRadius: '999px',
-                    fontSize: '0.85rem',
-                    fontWeight: '600',
-                    whiteSpace: 'nowrap',
-                    marginLeft: '0.5rem',
-                  }}>
-                    ⭐ {r.rating}
-                  </span>
+                {/* Photo */}
+                {r.photoUrl && (
+                  <img
+                    src={r.photoUrl}
+                    alt={r.name}
+                    style={{
+                      width: '100%',
+                      height: '200px',
+                      objectFit: 'cover',
+                      display: 'block',
+                    }}
+                  />
+                )}
+
+                <div style={{ padding: '1.25rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <h3 style={{ fontWeight: '700', fontSize: '1.05rem', color: '#fff' }}>{r.name}</h3>
+                    <span style={{
+                      backgroundColor: '#2a1010',
+                      color: '#ff9999',
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: '999px',
+                      fontSize: '0.85rem',
+                      fontWeight: '600',
+                      whiteSpace: 'nowrap',
+                      marginLeft: '0.5rem',
+                      border: `1px solid ${accent}`,
+                    }}>
+                      ⭐ {r.rating}
+                    </span>
+                  </div>
+                  <p style={{ color: '#888', fontSize: '0.88rem', margin: '0.3rem 0' }}>{r.address}</p>
+                  {r.priceLevel && (
+                    <p style={{ fontSize: '0.85rem', color: accent }}>
+                      {'💰'.repeat(r.priceLevel)}
+                    </p>
+                  )}
+                  {r.reason && (
+                    <p style={{
+                      marginTop: '0.85rem',
+                      fontSize: '0.9rem',
+                      color: '#ccc',
+                      lineHeight: '1.6',
+                      borderTop: `1px solid ${borderColor}`,
+                      paddingTop: '0.85rem',
+                    }}>
+                      {r.reason}
+                    </p>
+                  )}
                 </div>
-                <p style={{ color: '#6b7280', fontSize: '0.9rem', margin: '0.25rem 0' }}>{r.address}</p>
-                {r.priceLevel && (
-                  <p style={{ fontSize: '0.85rem', color: '#6b7280' }}>
-                    {'💰'.repeat(r.priceLevel)}
-                  </p>
-                )}
-                {r.reason && (
-                  <p style={{
-                    marginTop: '0.75rem',
-                    fontSize: '0.9rem',
-                    color: '#374151',
-                    lineHeight: '1.5',
-                    borderTop: '1px solid #f3f4f6',
-                    paddingTop: '0.75rem',
-                  }}>
-                    {r.reason}
-                  </p>
-                )}
               </div>
             ))}
           </div>
+
+          {/* Load More */}
+          {hasMore && (
+            <button
+              onClick={() => setDisplayed(displayed + 3)}
+              style={{
+                width: '100%',
+                marginTop: '1.25rem',
+                padding: '0.85rem',
+                backgroundColor: 'transparent',
+                color: accent,
+                border: `2px solid ${accent}`,
+                borderRadius: '0.6rem',
+                fontSize: '0.95rem',
+                fontWeight: '600',
+                transition: 'all 0.2s',
+              }}
+            >
+              Load More Options
+            </button>
+          )}
         </section>
       )}
     </main>
