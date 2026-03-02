@@ -19,7 +19,7 @@ export default function Home() {
   const [displayed, setDisplayed] = useState(3)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [summary, setSummary] = useState('')
+  const [searched, setSearched] = useState(false)
 
   const handleSearch = async () => {
     if (!selectedCategory && !freeText) {
@@ -34,8 +34,8 @@ export default function Home() {
     setLoading(true)
     setError(null)
     setAllResults([])
-    setSummary('')
     setDisplayed(3)
+    setSearched(false)
 
     try {
       const response = await fetch('/api/search', {
@@ -48,7 +48,7 @@ export default function Home() {
       if (!response.ok) throw new Error(data.error || 'Something went wrong')
 
       setAllResults(data.restaurants)
-      setSummary(data.summary)
+      setSearched(true)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -60,7 +60,6 @@ export default function Home() {
   const hasMore = displayed < allResults.length
 
   const accent = '#B22222'
-  const accentHover = '#cc2222'
   const cardBg = '#1e1e1e'
   const borderColor = '#2a2a2a'
 
@@ -80,11 +79,7 @@ export default function Home() {
         }}>
           Restaurant Finder
         </div>
-        <p style={{
-          color: '#aaa',
-          fontSize: '1.05rem',
-          letterSpacing: '0.5px',
-        }}>
+        <p style={{ color: '#aaa', fontSize: '1.05rem', letterSpacing: '0.5px' }}>
           Discover the perfect place for every occasion
         </p>
         <div style={{
@@ -140,7 +135,7 @@ export default function Home() {
             width: '100%',
             padding: '0.85rem',
             borderRadius: '0.6rem',
-            border: `1.5px solid #333`,
+            border: '1.5px solid #333',
             backgroundColor: cardBg,
             color: '#f0f0f0',
             fontSize: '0.95rem',
@@ -165,7 +160,7 @@ export default function Home() {
             width: '100%',
             padding: '0.85rem',
             borderRadius: '0.6rem',
-            border: `1.5px solid #333`,
+            border: '1.5px solid #333',
             backgroundColor: cardBg,
             color: '#f0f0f0',
             fontSize: '0.95rem',
@@ -200,20 +195,11 @@ export default function Home() {
         <p style={{ color: '#ff6b6b', marginBottom: '1rem', fontSize: '0.95rem' }}>{error}</p>
       )}
 
-      {/* Summary */}
-      {summary && (
-        <div style={{
-          backgroundColor: '#1a0a0a',
-          border: `1px solid ${accent}`,
-          borderRadius: '0.6rem',
-          padding: '1rem 1.25rem',
-          marginBottom: '1.75rem',
-          color: '#ffaaaa',
-          fontSize: '0.95rem',
-          lineHeight: '1.6',
-        }}>
-          {summary}
-        </div>
+      {/* No Results */}
+      {searched && allResults.length === 0 && (
+        <p style={{ color: '#fff', fontSize: '1rem', textAlign: 'center', marginTop: '1rem' }}>
+          No Results Found, Try a Different Location
+        </p>
       )}
 
       {/* Results */}
@@ -250,26 +236,33 @@ export default function Home() {
                 <div style={{ padding: '1.25rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <h3 style={{ fontWeight: '700', fontSize: '1.05rem', color: '#fff' }}>{r.name}</h3>
-                    <span style={{
-                      backgroundColor: '#2a1010',
-                      color: '#ff9999',
-                      padding: '0.2rem 0.6rem',
-                      borderRadius: '999px',
-                      fontSize: '0.85rem',
-                      fontWeight: '600',
-                      whiteSpace: 'nowrap',
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'flex-end',
                       marginLeft: '0.5rem',
-                      border: `1px solid ${accent}`,
+                      flexShrink: 0,
                     }}>
-                      ⭐ {r.rating}
-                    </span>
+                      <span style={{
+                        backgroundColor: '#2a1010',
+                        color: '#ff9999',
+                        padding: '0.2rem 0.6rem',
+                        borderRadius: '999px',
+                        fontSize: '0.85rem',
+                        fontWeight: '600',
+                        border: `1px solid ${accent}`,
+                        whiteSpace: 'nowrap',
+                      }}>
+                        ⭐ {r.rating}
+                      </span>
+                      {r.userRatingCount && (
+                        <span style={{ fontSize: '0.75rem', color: '#888', marginTop: '0.25rem' }}>
+                          {r.userRatingCount.toLocaleString()} reviews
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <p style={{ color: '#888', fontSize: '0.88rem', margin: '0.3rem 0' }}>{r.address}</p>
-                  {r.priceLevel && (
-                    <p style={{ fontSize: '0.85rem', color: accent }}>
-                      {'💰'.repeat(r.priceLevel)}
-                    </p>
-                  )}
                   {r.reason && (
                     <p style={{
                       marginTop: '0.85rem',
@@ -301,7 +294,6 @@ export default function Home() {
                 borderRadius: '0.6rem',
                 fontSize: '0.95rem',
                 fontWeight: '600',
-                transition: 'all 0.2s',
               }}
             >
               Load More Options
@@ -312,3 +304,13 @@ export default function Home() {
     </main>
   )
 }
+```
+
+We also need to fetch `userRatingCount` from Google Places. Update `route.js` — find this line in the `X-Goog-FieldMask` header:
+```
+'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.rating,places.priceLevel,places.editorialSummary,places.photos,places.types',
+```
+
+Replace it with:
+```
+'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.priceLevel,places.editorialSummary,places.photos,places.types',
