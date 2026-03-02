@@ -304,13 +304,3 @@ export default function Home() {
     </main>
   )
 }
-```
-
-We also need to fetch `userRatingCount` from Google Places. Update `route.js` — find this line in the `X-Goog-FieldMask` header:
-```
-'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.rating,places.priceLevel,places.editorialSummary,places.photos,places.types',
-```
-
-Replace it with:
-```
-'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.priceLevel,places.editorialSummary,places.photos,places.types',
