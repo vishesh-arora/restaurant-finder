@@ -18,13 +18,12 @@ export async function POST(request) {
     const { lat, lng } = geocodeData.results[0].geometry.location
 
     // Step 2: Search for restaurants
-    const placesUrl = `https://places.googleapis.com/v1/places:searchNearby`
-    const placesRes = await fetch(placesUrl, {
+    const placesRes = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY,
-        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.rating,places.priceLevel,places.types,places.editorialSummary',
+        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.rating,places.priceLevel,places.editorialSummary,places.photos',
       },
       body: JSON.stringify({
         includedTypes: ['restaurant'],
@@ -52,9 +51,10 @@ export async function POST(request) {
       rating: p.rating || 'No rating',
       priceLevel: p.priceLevel || null,
       description: p.editorialSummary?.text || '',
+      photoName: p.photos?.[0]?.name || null,
     }))
 
-    // Step 4: Ask Claude to rank
+    // Step 4: Ask Claude to rank — return 6 results
     const purpose = [category, freeText].filter(Boolean).join(' — ')
 
     const message = await anthropic.messages.create({
@@ -63,21 +63,20 @@ export async function POST(request) {
       messages: [
         {
           role: 'user',
-          content: `You are a restaurant recommendation expert. A user is looking for restaurants for the following purpose: "${purpose}".
+          content: `You are a restaurant recommendation expert. A user is looking for restaurants for: "${purpose}".
 
-Here is a list of restaurants in ${location}:
+Here are restaurants in ${location}:
 
 ${JSON.stringify(restaurantList, null, 2)}
 
-Please select the top 5 most suitable restaurants for the user's purpose. For each one, explain in 1-2 sentences why it suits their needs.
+Select the top 6 most suitable restaurants. For each, explain in 1-2 sentences why it suits the user's purpose.
 
-You must respond with ONLY a raw JSON object. No markdown, no backticks, no code blocks, no explanation. Just the raw JSON object starting with { and ending with }.
-
-Use this exact format:
+Respond with ONLY a raw JSON object, no markdown, no backticks, just raw JSON starting with { and ending with }:
 {
-  "summary": "A 1-2 sentence overall recommendation summary for the user",
+  "summary": "1-2 sentence overall recommendation summary",
   "restaurants": [
     {
+      "index": 1,
       "name": "Restaurant Name",
       "address": "Full address",
       "rating": 4.5,
@@ -90,12 +89,26 @@ Use this exact format:
       ],
     })
 
-    // Step 5: Parse response
+    // Step 5: Parse Claude response
     const raw = message.content[0].text
-    const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-    const parsed = JSON.parse(cleaned)
+    const jsonMatch = raw.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) throw new Error('Invalid response from AI')
+    const parsed = JSON.parse(jsonMatch[0])
 
-    return Response.json(parsed)
+    // Step 6: Attach photo URLs
+    const photoBaseUrl = 'https://places.googleapis.com/v1/'
+    const results = await Promise.all(
+      parsed.restaurants.map(async (r) => {
+        const original = restaurantList.find(p => p.name === r.name)
+        let photoUrl = null
+        if (original?.photoName) {
+          photoUrl = `${photoBaseUrl}${original.photoName}/media?maxHeightPx=400&maxWidthPx=800&key=${process.env.GOOGLE_PLACES_API_KEY}&skipHttpRedirect=false`
+        }
+        return { ...r, photoUrl }
+      })
+    )
+
+    return Response.json({ summary: parsed.summary, restaurants: results })
   } catch (err) {
     console.error(err)
     return Response.json({ error: 'Something went wrong. Please try again.' }, { status: 500 })
