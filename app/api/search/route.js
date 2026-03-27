@@ -24,6 +24,7 @@ const CUISINE_CONTEXT = {
 export async function POST(request) {
   try {
     const { category, cuisine, freeText, location } = await request.json()
+    console.log('SEARCH:', JSON.stringify({ category, cuisine, freeText, location, timestamp: new Date().toISOString() }))
 
     const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(location)}&key=${process.env.GOOGLE_PLACES_API_KEY}`
     const geocodeRes = await fetch(geocodeUrl)
