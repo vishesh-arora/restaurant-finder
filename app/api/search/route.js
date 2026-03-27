@@ -78,7 +78,7 @@ Rules:
         textQuery: searchQuery,
         maxResultCount: 20,
         languageCode: 'en',
-        locationBias: {
+        locationRestriction: {
           circle: {
             center: { latitude: lat, longitude: lng },
             radius: 2000,
