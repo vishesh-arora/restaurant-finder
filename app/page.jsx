@@ -11,8 +11,19 @@ const CATEGORIES = [
   { id: 'lunch', label: 'Lunch with Colleagues' },
 ]
 
+const CUISINES = [
+  { id: 'any', label: 'No Preference' },
+  { id: 'north_indian', label: 'North Indian' },
+  { id: 'south_indian', label: 'South Indian' },
+  { id: 'continental', label: 'Continental' },
+  { id: 'pan_asian', label: 'Pan Asian' },
+  { id: 'chinese', label: 'Chinese' },
+  { id: 'italian', label: 'Italian' },
+]
+
 export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState(null)
+  const [selectedCuisine, setSelectedCuisine] = useState('any')
   const [freeText, setFreeText] = useState('')
   const [location, setLocation] = useState('')
   const [allResults, setAllResults] = useState([])
@@ -41,7 +52,12 @@ export default function Home() {
       const response = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category: selectedCategory, freeText, location }),
+        body: JSON.stringify({
+          category: selectedCategory,
+          cuisine: selectedCuisine,
+          freeText,
+          location,
+        }),
       })
 
       const data = await response.json()
@@ -115,6 +131,36 @@ export default function Home() {
                 }}
               >
                 {cat.label}
+              </button>
+            )
+          })}
+        </div>
+      </section>
+
+      {/* Cuisine Picker */}
+      <section style={{ marginBottom: '1.75rem' }}>
+        <h2 style={{ fontSize: '0.85rem', fontWeight: '600', color: '#aaa', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.75rem' }}>
+          Cuisine preference?
+        </h2>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+          {CUISINES.map((c) => {
+            const isSelected = selectedCuisine === c.id
+            return (
+              <button
+                key={c.id}
+                onClick={() => setSelectedCuisine(c.id)}
+                style={{
+                  padding: '0.5rem 1.1rem',
+                  borderRadius: '999px',
+                  border: `2px solid ${isSelected ? accent : '#333'}`,
+                  backgroundColor: isSelected ? accent : 'transparent',
+                  color: isSelected ? '#fff' : '#ccc',
+                  fontWeight: '500',
+                  fontSize: '0.9rem',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {c.label}
               </button>
             )
           })}
@@ -219,7 +265,6 @@ export default function Home() {
                   overflow: 'hidden',
                 }}
               >
-                {/* Photo */}
                 {r.photoUrl && (
                   <img
                     src={r.photoUrl}
@@ -280,7 +325,6 @@ export default function Home() {
             ))}
           </div>
 
-          {/* Load More */}
           {hasMore && (
             <button
               onClick={() => setDisplayed(displayed + 3)}
