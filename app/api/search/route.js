@@ -55,7 +55,18 @@ Rules:
     const searchQuery = queryMessage.content[0].text.trim().replace(/['"]/g, '')
     console.log('Generated search query:', searchQuery)
 
-    // Step 2: Use Google Places Text Search with Claude's query
+    // Step 2: Geocode the location for coordinates
+    const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(location)}&key=${process.env.GOOGLE_PLACES_API_KEY}`
+    const geocodeRes = await fetch(geocodeUrl)
+    const geocodeData = await geocodeRes.json()
+    
+    if (!geocodeData.results || geocodeData.results.length === 0) {
+      return Response.json({ error: 'Location not found. Please try a different area.' }, { status: 400 })
+    }
+    
+    const { lat, lng } = geocodeData.results[0].geometry.location
+    
+    // Step 3: Use Google Places Text Search with location bias
     const textSearchRes = await fetch('https://places.googleapis.com/v1/places:searchText', {
       method: 'POST',
       headers: {
@@ -67,8 +78,15 @@ Rules:
         textQuery: searchQuery,
         maxResultCount: 20,
         languageCode: 'en',
+        locationBias: {
+          circle: {
+            center: { latitude: lat, longitude: lng },
+            radius: 2000,
+          },
+        },
       }),
     })
+
 
     const placesData = await textSearchRes.json()
 
@@ -76,7 +94,7 @@ Rules:
       return Response.json({ error: 'No results found. Try a different location or occasion.' }, { status: 400 })
     }
 
-    // Step 3: Filter by minimum rating
+    // Step 4: Filter by minimum rating
     const restaurantList = placesData.places
       .filter(p => (p.rating || 0) >= 4.0)
       .map((p, i) => ({
@@ -95,7 +113,7 @@ Rules:
       return Response.json({ error: 'No highly rated results found. Try a different location or occasion.' }, { status: 400 })
     }
 
-    // Step 4: Ask Claude to rank and explain
+    // Step 5: Ask Claude to rank and explain
     const rankMessage = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1500,
@@ -142,7 +160,7 @@ IMPORTANT: Respond with ONLY raw valid JSON. No markdown. No backticks. No trail
 
     const parsed = JSON.parse(cleaned)
 
-    // Step 5: Attach photos and review counts
+    // Step 6: Attach photos and review counts
     const photoBaseUrl = 'https://places.googleapis.com/v1/'
     const results = await Promise.all(
       parsed.restaurants.map(async (r) => {
