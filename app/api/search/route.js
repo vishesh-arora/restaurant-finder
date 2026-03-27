@@ -6,14 +6,24 @@ const CATEGORY_CONTEXT = {
   romantic: 'fine dining, intimate ambiance, candlelit restaurants, upscale cuisine',
   family: 'family-friendly restaurants, comfortable seating, varied menu for all ages',
   birthday: 'celebratory restaurants, good ambiance, desserts, lively atmosphere',
-  brunch: 'brunch spots, cafes, breakfast restaurants, morning dining',
+  brunch: 'brunch spots serving eggs, pancakes, waffles, sandwiches, juices, coffee — NOT traditional South Indian breakfast places like idli, dosa, filter coffee joints',
   drinks: 'bars, pubs, lounges, breweries, places that serve alcohol and cocktails — NOT cafes or coffee shops',
   lunch: 'professional restaurants suitable for business lunch, quiet enough for conversation',
 }
 
+const CUISINE_CONTEXT = {
+  any: '',
+  north_indian: 'North Indian cuisine — tandoor, curries, dal, naan, biryani',
+  south_indian: 'South Indian cuisine — dosa, idli, sambhar, rasam, rice dishes',
+  continental: 'Continental/Western cuisine — pastas, grills, salads, burgers, steaks',
+  pan_asian: 'Pan Asian cuisine — sushi, Thai, Vietnamese, Korean, Japanese',
+  chinese: 'Chinese cuisine — noodles, dim sum, stir fry, Manchurian',
+  italian: 'Italian cuisine — pizza, pasta, risotto, tiramisu',
+}
+
 export async function POST(request) {
   try {
-    const { category, freeText, location } = await request.json()
+    const { category, cuisine, freeText, location } = await request.json()
 
     const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(location)}&key=${process.env.GOOGLE_PLACES_API_KEY}`
     const geocodeRes = await fetch(geocodeUrl)
@@ -25,7 +35,6 @@ export async function POST(request) {
 
     const { lat, lng } = geocodeData.results[0].geometry.location
 
-    // Use bar type for drinks category, restaurant for others
     const includedTypes = category === 'drinks'
       ? ['bar', 'pub', 'night_club', 'wine_bar']
       : ['restaurant']
@@ -60,15 +69,20 @@ export async function POST(request) {
       name: p.displayName?.text || 'Unknown',
       address: p.formattedAddress || '',
       rating: p.rating || 'No rating',
+      userRatingCount: p.userRatingCount || null,
       priceLevel: p.priceLevel || null,
       description: p.editorialSummary?.text || '',
       types: p.types || [],
-      userRatingCount: p.userRatingCount || null,
       photoName: p.photos?.[0]?.name || null,
     }))
 
     const purpose = [category, freeText].filter(Boolean).join(' — ')
     const categoryContext = CATEGORY_CONTEXT[category] || ''
+    const cuisineContext = CUISINE_CONTEXT[cuisine] || ''
+
+    const cuisineInstruction = cuisine && cuisine !== 'any'
+      ? `The user specifically wants ${cuisineContext}. Only recommend places that serve this cuisine. Exclude any place that does not match.`
+      : 'The user has no cuisine preference — recommend based on occasion fit and quality.'
 
     const message = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
@@ -78,15 +92,17 @@ export async function POST(request) {
           role: 'user',
           content: `You are a restaurant recommendation expert. A user is looking for: "${purpose}".
 
-Context for this occasion: ${categoryContext}
-Additional user notes: ${freeText || 'none'}
+Occasion context: ${categoryContext}
+Cuisine instruction: ${cuisineInstruction}
+Additional notes: ${freeText || 'none'}
 
 Here are places in ${location}:
 
 ${JSON.stringify(restaurantList, null, 2)}
 
-Select the top 6 most suitable places that genuinely match the occasion and context above. 
-For "drinks" occasions, ONLY include bars, pubs, lounges or places that clearly serve alcohol. Exclude cafes and coffee shops entirely.
+Select the top 6 most suitable places that genuinely match BOTH the occasion AND the cuisine preference above.
+For "brunch" occasions, only include places that serve a proper brunch menu — eggs, pancakes, waffles, sandwiches. Exclude traditional South Indian breakfast places unless the user specifically asked for South Indian cuisine.
+For "drinks" occasions, only include bars, pubs, lounges or places that clearly serve alcohol. Exclude cafes entirely.
 For each place, explain in 1-2 sentences why it suits the user's purpose.
 
 IMPORTANT: Respond with ONLY raw valid JSON. No markdown. No backticks. No trailing commas. Just JSON starting with { and ending with }.
@@ -100,7 +116,7 @@ IMPORTANT: Respond with ONLY raw valid JSON. No markdown. No backticks. No trail
       "address": "Full address",
       "rating": 4.5,
       "priceLevel": 2,
-      "reason": "Why this suits the occasion"
+      "reason": "Why this suits the occasion and cuisine"
     }
   ]
 }`,
