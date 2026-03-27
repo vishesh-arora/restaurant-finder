@@ -64,7 +64,9 @@ export async function POST(request) {
       return Response.json({ error: 'No results found in this area. Try a different location.' }, { status: 400 })
     }
 
-    const restaurantList = placesData.places.map((p, i) => ({
+    const restaurantList = placesData.places
+      .filter(p => (p.rating || 0) >= 4.0)
+      .map((p, i) => ({
       index: i + 1,
       name: p.displayName?.text || 'Unknown',
       address: p.formattedAddress || '',
