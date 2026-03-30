@@ -2,126 +2,96 @@ import Anthropic from '@anthropic-ai/sdk'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-const CATEGORY_CONTEXT = {
-  romantic: 'intimate, quiet, candlelit, fine dining, date night, upscale ambiance',
-  family: 'family-friendly, comfortable, casual, suitable for kids and all ages',
-  birthday: 'celebratory, lively, good ambiance, great for groups, festive atmosphere',
-  brunch: 'brunch menu, eggs, pancakes, waffles, sandwiches, juices, morning dining — NOT traditional South Indian breakfast',
-  drinks: 'bar, pub, lounge, brewery, cocktails, alcohol — NOT cafe or coffee shop',
-  lunch: 'professional, quiet enough for conversation, suitable for business lunch',
+const CATEGORY_CONFIG = {
+  romantic: {
+    types: ['restaurant'],
+    context: 'fine dining, intimate, quiet, candlelit, upscale, great for a date. Exclude busy casual chains, loud popular joints, or mass market restaurants.',
+  },
+  family: {
+    types: ['restaurant'],
+    context: 'family-friendly, comfortable, casual, suitable for kids and all ages, spacious seating.',
+  },
+  birthday: {
+    types: ['restaurant'],
+    context: 'celebratory, lively, great for groups, festive atmosphere, good ambiance.',
+  },
+  brunch: {
+    types: ['restaurant', 'cafe', 'breakfast_restaurant'],
+    context: 'serves brunch menu — eggs, pancakes, waffles, sandwiches, juices, coffee. NOT traditional South Indian breakfast places like idli dosa filter coffee joints unless user asked for South Indian.',
+  },
+  drinks: {
+    types: ['bar', 'pub', 'night_club', 'wine_bar'],
+    context: 'bar, pub, lounge, brewery, serves alcohol and cocktails. Exclude cafes and coffee shops entirely.',
+  },
+  lunch: {
+    types: ['restaurant'],
+    context: 'professional setting, quiet enough for conversation, suitable for business lunch.',
+  },
 }
 
 const CUISINE_CONTEXT = {
   any: '',
-  north_indian: 'North Indian cuisine, tandoor, curries, biryani, naan',
-  south_indian: 'South Indian cuisine, dosa, idli, sambhar, rice dishes',
-  continental: 'Continental cuisine, pasta, grills, salads, steaks, Western food',
-  pan_asian: 'Pan Asian cuisine, sushi, Thai, Vietnamese, Korean, Japanese',
-  chinese: 'Chinese cuisine, noodles, dim sum, stir fry, Manchurian',
-  italian: 'Italian cuisine, pizza, pasta, risotto',
+  north_indian: 'North Indian cuisine — tandoor, curries, biryani, naan',
+  south_indian: 'South Indian cuisine — dosa, idli, sambhar, rice dishes',
+  continental: 'Continental/Western cuisine — pasta, grills, salads, steaks',
+  pan_asian: 'Pan Asian cuisine — sushi, Thai, Vietnamese, Korean, Japanese',
+  chinese: 'Chinese cuisine — noodles, dim sum, stir fry',
+  italian: 'Italian cuisine — pizza, pasta, risotto',
+}
+
+async function fetchNearby(types, lat, lng, radius) {
+  const res = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY,
+      'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.priceLevel,places.editorialSummary,places.photos,places.types',
+    },
+    body: JSON.stringify({
+      includedTypes: types,
+      maxResultCount: 20,
+      locationRestriction: {
+        circle: {
+          center: { latitude: lat, longitude: lng },
+          radius,
+        },
+      },
+    }),
+  })
+  const data = await res.json()
+  return data.places || []
 }
 
 export async function POST(request) {
   try {
     const { category, cuisine, freeText, location } = await request.json()
 
-    const categoryContext = CATEGORY_CONTEXT[category] || ''
-    const cuisineContext = CUISINE_CONTEXT[cuisine] || ''
+    console.log('SEARCH:', JSON.stringify({ category, cuisine, freeText, location, timestamp: new Date().toISOString() }))
 
-    // Step 1: Ask Claude to generate a precise search query
-    const queryMessage = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 100,
-      messages: [
-        {
-          role: 'user',
-          content: `Generate a precise Google Places search query to find the best restaurants for the following:
-
-Occasion: ${category} — ${categoryContext}
-Cuisine: ${cuisineContext || 'no specific cuisine preference'}
-Extra notes: ${freeText || 'none'}
-Location: ${location}
-
-Rules:
-- Return ONLY the search query string, nothing else
-- Be specific about the type of place, ambiance, and cuisine
-- Include the location at the end
-- Keep it under 10 words
-- Examples: "romantic fine dining Italian restaurant Bandra Mumbai", "craft beer pub lounge HSR Layout Bangalore", "family friendly North Indian restaurant Faridabad"`,
-        },
-      ],
-    })
-
-    const searchQuery = queryMessage.content[0].text.trim().replace(/['"]/g, '')
-    console.log('Generated search query:', searchQuery)
-
-    // Step 2: Geocode the location for coordinates
+    // Step 1: Geocode the location
     const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(location)}&key=${process.env.GOOGLE_PLACES_API_KEY}`
     const geocodeRes = await fetch(geocodeUrl)
     const geocodeData = await geocodeRes.json()
-    
+
     if (!geocodeData.results || geocodeData.results.length === 0) {
       return Response.json({ error: 'Location not found. Please try a different area.' }, { status: 400 })
     }
-    
+
     const { lat, lng } = geocodeData.results[0].geometry.location
-    
-    // Step 3: Use Google Places Text Search with location bias
-    const textSearchRes = await fetch('https://places.googleapis.com/v1/places:searchText', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY,
-        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.priceLevel,places.editorialSummary,places.photos,places.types',
-      },
-      body: JSON.stringify({
-        textQuery: searchQuery,
-        maxResultCount: 20,
-        languageCode: 'en',
-        locationRestriction: {
-          circle: {
-            center: { latitude: lat, longitude: lng },
-            radius: 3000,
-          },
-        },
-      }),
-    })
+    const config = CATEGORY_CONFIG[category] || CATEGORY_CONFIG.romantic
 
-
-    const placesData = await textSearchRes.json()
-
-    // If no results with restriction, retry with larger radius
-    let places = placesData.places
-    if (!places || places.length === 0) {
-      const fallbackRes = await fetch('https://places.googleapis.com/v1/places:searchText', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY,
-          'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.priceLevel,places.editorialSummary,places.photos,places.types',
-        },
-        body: JSON.stringify({
-          textQuery: searchQuery,
-          maxResultCount: 20,
-          languageCode: 'en',
-          locationRestriction: {
-            circle: {
-              center: { latitude: lat, longitude: lng },
-              radius: 5000,
-            },
-          },
-        }),
-      })
-      const fallbackData = await fallbackRes.json()
-      places = fallbackData.places || []
-    }
-    
-    if (!places || places.length === 0) {
-      return Response.json({ error: 'No results found. Try a different location or occasion.' }, { status: 400 })
+    // Step 2: Fetch nearby places — try 1500m first, expand to 3000m if needed
+    let places = await fetchNearby(config.types, lat, lng, 1500)
+    if (places.length < 5) {
+      places = await fetchNearby(config.types, lat, lng, 3000)
     }
 
-    // Step 4: Filter by minimum rating
-    const restaurantList = places
+    if (places.length === 0) {
+      return Response.json({ error: 'No results found in this area. Try a different location.' }, { status: 400 })
+    }
+
+    // Step 3: Filter by minimum rating 4.0
+    let restaurantList = places
       .filter(p => (p.rating || 0) >= 4.0)
       .map((p, i) => ({
         index: i + 1,
@@ -135,28 +105,51 @@ Rules:
         photoName: p.photos?.[0]?.name || null,
       }))
 
+    // If rating filter is too strict, relax to 3.8
+    if (restaurantList.length < 3) {
+      restaurantList = places
+        .filter(p => (p.rating || 0) >= 3.8)
+        .map((p, i) => ({
+          index: i + 1,
+          name: p.displayName?.text || 'Unknown',
+          address: p.formattedAddress || '',
+          rating: p.rating || 'No rating',
+          userRatingCount: p.userRatingCount || null,
+          priceLevel: p.priceLevel || null,
+          description: p.editorialSummary?.text || '',
+          types: p.types || [],
+          photoName: p.photos?.[0]?.name || null,
+        }))
+    }
+
     if (restaurantList.length === 0) {
       return Response.json({ error: 'No highly rated results found. Try a different location or occasion.' }, { status: 400 })
     }
 
-    // Step 5: Ask Claude to rank and explain
-    const rankMessage = await anthropic.messages.create({
+    // Step 4: Ask Claude to rank and explain
+    const cuisineContext = CUISINE_CONTEXT[cuisine] || ''
+    const cuisineInstruction = cuisine && cuisine !== 'any'
+      ? `The user specifically wants ${cuisineContext}. Only recommend places that serve this cuisine. Exclude any place that does not match.`
+      : 'The user has no cuisine preference.'
+
+    const message = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1500,
       messages: [
         {
           role: 'user',
-          content: `You are a restaurant recommendation expert. A user is looking for: "${category}" restaurants in ${location}.
+          content: `You are a restaurant recommendation expert. 
 
-Occasion: ${categoryContext}
-Cuisine preference: ${cuisineContext || 'none'}
-Extra notes: ${freeText || 'none'}
+Occasion: ${category} — ${config.context}
+Cuisine instruction: ${cuisineInstruction}
+Extra notes from user: ${freeText || 'none'}
+Location: ${location}
 
-Here are the candidate restaurants:
+Here are candidate restaurants:
 
 ${JSON.stringify(restaurantList, null, 2)}
 
-Select the top 6 most suitable restaurants. For each, explain in 1-2 sentences why it suits the user's occasion and preferences.
+Select the top 6 most suitable restaurants that genuinely match the occasion and cuisine. Use your knowledge of restaurant types and vibes to make smart choices — do not just pick by rating alone. For each, explain in 1-2 sentences why it suits the user.
 
 IMPORTANT: Respond with ONLY raw valid JSON. No markdown. No backticks. No trailing commas. Just JSON starting with { and ending with }.
 
@@ -175,7 +168,8 @@ IMPORTANT: Respond with ONLY raw valid JSON. No markdown. No backticks. No trail
       ],
     })
 
-    const raw = rankMessage.content[0].text
+    // Step 5: Parse Claude response
+    const raw = message.content[0].text
     const jsonMatch = raw.match(/\{[\s\S]*\}/)
     if (!jsonMatch) throw new Error('Invalid response from AI')
 
