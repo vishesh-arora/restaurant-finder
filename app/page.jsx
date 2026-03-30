@@ -3,12 +3,15 @@
 import { useState } from 'react'
 
 const CATEGORIES = [
-  { id: 'romantic', label: 'Romantic Dinner' },
+  { id: 'romantic', label: 'Romantic Date' },
+  { id: 'first_date', label: 'First Date' },
   { id: 'family', label: 'Family Outing' },
-  { id: 'birthday', label: 'Birthday Celebration' },
+  { id: 'birthday', label: 'Birthday / Anniversary' },
   { id: 'brunch', label: 'Brunch' },
   { id: 'drinks', label: 'Drinks with Friends' },
   { id: 'lunch', label: 'Lunch with Colleagues' },
+  { id: 'solo', label: 'Quick Solo Meal' },
+  { id: 'team', label: 'Team Outing' },
 ]
 
 const CUISINES = [
@@ -21,9 +24,17 @@ const CUISINES = [
   { id: 'italian', label: 'Italian' },
 ]
 
+const MEALTIMES = [
+  { id: 'breakfast', label: 'Breakfast' },
+  { id: 'lunch', label: 'Lunch' },
+  { id: 'dinner', label: 'Dinner' },
+  { id: 'late_night', label: 'Late Night' },
+]
+
 export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState(null)
   const [selectedCuisine, setSelectedCuisine] = useState('any')
+  const [selectedMealtime, setSelectedMealtime] = useState(null)
   const [freeText, setFreeText] = useState('')
   const [location, setLocation] = useState('')
   const [allResults, setAllResults] = useState([])
@@ -55,6 +66,7 @@ export default function Home() {
         body: JSON.stringify({
           category: selectedCategory,
           cuisine: selectedCuisine,
+          mealtime: selectedMealtime,
           freeText,
           location,
         }),
@@ -78,6 +90,37 @@ export default function Home() {
   const accent = '#B22222'
   const cardBg = '#1e1e1e'
   const borderColor = '#2a2a2a'
+
+  const PillSelector = ({ label, items, selected, onSelect, multiDeselect }) => (
+    <section style={{ marginBottom: '1.75rem' }}>
+      <h2 style={{ fontSize: '0.85rem', fontWeight: '600', color: '#aaa', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.75rem' }}>
+        {label}
+      </h2>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+        {items.map((item) => {
+          const isSelected = selected === item.id
+          return (
+            <button
+              key={item.id}
+              onClick={() => onSelect(isSelected && multiDeselect ? null : item.id)}
+              style={{
+                padding: '0.5rem 1.1rem',
+                borderRadius: '999px',
+                border: `2px solid ${isSelected ? accent : '#333'}`,
+                backgroundColor: isSelected ? accent : 'transparent',
+                color: isSelected ? '#fff' : '#ccc',
+                fontWeight: '500',
+                fontSize: '0.9rem',
+                transition: 'all 0.2s',
+              }}
+            >
+              {item.label}
+            </button>
+          )
+        })}
+      </div>
+    </section>
+  )
 
   return (
     <main style={{ maxWidth: '720px', margin: '0 auto', padding: '2.5rem 1.25rem' }}>
@@ -107,65 +150,32 @@ export default function Home() {
         }} />
       </div>
 
-      {/* Category Picker */}
-      <section style={{ marginBottom: '1.75rem' }}>
-        <h2 style={{ fontSize: '0.85rem', fontWeight: '600', color: '#aaa', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.75rem' }}>
-          What's the occasion?
-        </h2>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-          {CATEGORIES.map((cat) => {
-            const isSelected = selectedCategory === cat.id
-            return (
-              <button
-                key={cat.id}
-                onClick={() => setSelectedCategory(isSelected ? null : cat.id)}
-                style={{
-                  padding: '0.5rem 1.1rem',
-                  borderRadius: '999px',
-                  border: `2px solid ${isSelected ? accent : '#333'}`,
-                  backgroundColor: isSelected ? accent : 'transparent',
-                  color: isSelected ? '#fff' : '#ccc',
-                  fontWeight: '500',
-                  fontSize: '0.9rem',
-                  transition: 'all 0.2s',
-                }}
-              >
-                {cat.label}
-              </button>
-            )
-          })}
-        </div>
-      </section>
+      {/* Occasion */}
+      <PillSelector
+        label="What's the occasion?"
+        items={CATEGORIES}
+        selected={selectedCategory}
+        onSelect={setSelectedCategory}
+        multiDeselect={true}
+      />
 
-      {/* Cuisine Picker */}
-      <section style={{ marginBottom: '1.75rem' }}>
-        <h2 style={{ fontSize: '0.85rem', fontWeight: '600', color: '#aaa', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.75rem' }}>
-          Cuisine preference?
-        </h2>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-          {CUISINES.map((c) => {
-            const isSelected = selectedCuisine === c.id
-            return (
-              <button
-                key={c.id}
-                onClick={() => setSelectedCuisine(c.id)}
-                style={{
-                  padding: '0.5rem 1.1rem',
-                  borderRadius: '999px',
-                  border: `2px solid ${isSelected ? accent : '#333'}`,
-                  backgroundColor: isSelected ? accent : 'transparent',
-                  color: isSelected ? '#fff' : '#ccc',
-                  fontWeight: '500',
-                  fontSize: '0.9rem',
-                  transition: 'all 0.2s',
-                }}
-              >
-                {c.label}
-              </button>
-            )
-          })}
-        </div>
-      </section>
+      {/* Mealtime */}
+      <PillSelector
+        label="When are you going? (optional)"
+        items={MEALTIMES}
+        selected={selectedMealtime}
+        onSelect={(id) => setSelectedMealtime(selectedMealtime === id ? null : id)}
+        multiDeselect={true}
+      />
+
+      {/* Cuisine */}
+      <PillSelector
+        label="Cuisine preference?"
+        items={CUISINES}
+        selected={selectedCuisine}
+        onSelect={setSelectedCuisine}
+        multiDeselect={false}
+      />
 
       {/* Free Text */}
       <section style={{ marginBottom: '1.75rem' }}>
@@ -307,7 +317,9 @@ export default function Home() {
                       )}
                     </div>
                   </div>
+
                   <p style={{ color: '#888', fontSize: '0.88rem', margin: '0.3rem 0' }}>{r.address}</p>
+
                   {r.reason && (
                     <p style={{
                       marginTop: '0.85rem',
@@ -320,6 +332,27 @@ export default function Home() {
                       {r.reason}
                     </p>
                   )}
+
+                  {/* Google Maps Link */}
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.name + ' ' + r.address)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-block',
+                      marginTop: '1rem',
+                      padding: '0.4rem 0.9rem',
+                      backgroundColor: 'transparent',
+                      color: accent,
+                      border: `1.5px solid ${accent}`,
+                      borderRadius: '999px',
+                      fontSize: '0.82rem',
+                      fontWeight: '600',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    Open in Maps →
+                  </a>
                 </div>
               </div>
             ))}
