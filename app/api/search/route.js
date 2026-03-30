@@ -5,7 +5,11 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 const CATEGORY_CONFIG = {
   romantic: {
     types: ['restaurant'],
-    context: 'fine dining, intimate, quiet, candlelit, upscale, great for a date. Exclude busy casual chains, loud popular joints, or mass market restaurants.',
+    context: 'fine dining, intimate, quiet, candlelit, upscale, great for a romantic date. Exclude busy casual chains, loud popular joints, or mass market restaurants like Empire.',
+  },
+  first_date: {
+    types: ['restaurant', 'cafe'],
+    context: 'relaxed, casual but nice, good conversation setting, not too loud, not too formal. A comfortable place where two people can talk easily.',
   },
   family: {
     types: ['restaurant'],
@@ -13,7 +17,7 @@ const CATEGORY_CONFIG = {
   },
   birthday: {
     types: ['restaurant'],
-    context: 'celebratory, lively, great for groups, festive atmosphere, good ambiance.',
+    context: 'celebratory, lively, great for groups, festive atmosphere, good ambiance, suitable for birthdays and anniversaries.',
   },
   brunch: {
     types: ['restaurant', 'cafe', 'breakfast_restaurant'],
@@ -25,7 +29,15 @@ const CATEGORY_CONFIG = {
   },
   lunch: {
     types: ['restaurant'],
-    context: 'professional setting, quiet enough for conversation, suitable for business lunch.',
+    context: 'professional setting, quiet enough for conversation, suitable for business lunch with colleagues.',
+  },
+  solo: {
+    types: ['restaurant', 'cafe'],
+    context: 'comfortable for solo dining, quick service, good value, relaxed atmosphere, no pressure.',
+  },
+  team: {
+    types: ['restaurant'],
+    context: 'suitable for large groups, good for team outings, lively atmosphere, varied menu to suit different preferences, can accommodate 8-15 people.',
   },
 }
 
@@ -37,6 +49,25 @@ const CUISINE_CONTEXT = {
   pan_asian: 'Pan Asian cuisine — sushi, Thai, Vietnamese, Korean, Japanese',
   chinese: 'Chinese cuisine — noodles, dim sum, stir fry',
   italian: 'Italian cuisine — pizza, pasta, risotto',
+}
+
+const MEALTIME_CONTEXT = {
+  breakfast: 'It is breakfast time. Prioritise places that open early and serve breakfast menus. Avoid places that only open for lunch or dinner.',
+  lunch: 'It is lunchtime. Prioritise places with good lunch menus and reasonable wait times. Avoid places that are dinner-only.',
+  dinner: 'It is dinner time. Prioritise places with a good dinner ambiance, full menu, and evening atmosphere.',
+  late_night: 'It is late night. Only recommend places that are open late or 24 hours. Avoid places that close early.',
+}
+
+const OCCASION_BLOCKLIST = {
+  romantic: ['empire', 'mcdonalds', 'burger king', 'kfc', 'subway', 'dominos', 'pizza hut', 'barbeque nation'],
+  first_date: ['mcdonalds', 'burger king', 'kfc', 'subway', 'dominos', 'pizza hut'],
+  family: [],
+  birthday: [],
+  brunch: [],
+  drinks: [],
+  lunch: ['mcdonalds', 'burger king', 'kfc', 'subway', 'dominos', 'pizza hut'],
+  solo: [],
+  team: [],
 }
 
 async function fetchNearby(types, lat, lng, radius) {
@@ -64,9 +95,9 @@ async function fetchNearby(types, lat, lng, radius) {
 
 export async function POST(request) {
   try {
-    const { category, cuisine, freeText, location } = await request.json()
+    const { category, cuisine, mealtime, freeText, location } = await request.json()
 
-    console.log('SEARCH:', JSON.stringify({ category, cuisine, freeText, location, timestamp: new Date().toISOString() }))
+    console.log('SEARCH:', JSON.stringify({ category, cuisine, mealtime, freeText, location, timestamp: new Date().toISOString() }))
 
     // Step 1: Geocode the location
     const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(location)}&key=${process.env.GOOGLE_PLACES_API_KEY}`
@@ -90,9 +121,15 @@ export async function POST(request) {
       return Response.json({ error: 'No results found in this area. Try a different location.' }, { status: 400 })
     }
 
-    // Step 3: Filter by minimum rating 4.0
+    // Step 3: Apply blocklist and rating filter
+    const blocklist = OCCASION_BLOCKLIST[category] || []
+
     let restaurantList = places
       .filter(p => (p.rating || 0) >= 4.0)
+      .filter(p => {
+        const name = (p.displayName?.text || '').toLowerCase()
+        return !blocklist.some(blocked => name.includes(blocked))
+      })
       .map((p, i) => ({
         index: i + 1,
         name: p.displayName?.text || 'Unknown',
@@ -105,10 +142,14 @@ export async function POST(request) {
         photoName: p.photos?.[0]?.name || null,
       }))
 
-    // If rating filter is too strict, relax to 3.8
+    // Relax rating to 3.8 if too few results
     if (restaurantList.length < 3) {
       restaurantList = places
         .filter(p => (p.rating || 0) >= 3.8)
+        .filter(p => {
+          const name = (p.displayName?.text || '').toLowerCase()
+          return !blocklist.some(blocked => name.includes(blocked))
+        })
         .map((p, i) => ({
           index: i + 1,
           name: p.displayName?.text || 'Unknown',
@@ -128,8 +169,9 @@ export async function POST(request) {
 
     // Step 4: Ask Claude to rank and explain
     const cuisineContext = CUISINE_CONTEXT[cuisine] || ''
+    const mealtimeContext = MEALTIME_CONTEXT[mealtime] || ''
     const cuisineInstruction = cuisine && cuisine !== 'any'
-      ? `The user specifically wants ${cuisineContext}. Only recommend places that serve this cuisine. Exclude any place that does not match.`
+      ? `The user specifically wants ${cuisineContext}. Only recommend places that serve this cuisine.`
       : 'The user has no cuisine preference.'
 
     const message = await anthropic.messages.create({
@@ -138,18 +180,19 @@ export async function POST(request) {
       messages: [
         {
           role: 'user',
-          content: `You are a restaurant recommendation expert. 
+          content: `You are a restaurant recommendation expert.
 
 Occasion: ${category} — ${config.context}
-Cuisine instruction: ${cuisineInstruction}
-Extra notes from user: ${freeText || 'none'}
+Mealtime: ${mealtimeContext || 'not specified'}
+Cuisine: ${cuisineInstruction}
+Extra notes: ${freeText || 'none'}
 Location: ${location}
 
 Here are candidate restaurants:
 
 ${JSON.stringify(restaurantList, null, 2)}
 
-Select the top 6 most suitable restaurants that genuinely match the occasion and cuisine. Use your knowledge of restaurant types and vibes to make smart choices — do not just pick by rating alone. For each, explain in 1-2 sentences why it suits the user.
+Select the top 6 most suitable restaurants that genuinely match the occasion, mealtime, and cuisine. Factor in the mealtime heavily — a late night search should only include places open late, a breakfast search should only include places open in the morning. For each, explain in 1-2 sentences why it suits the user.
 
 IMPORTANT: Respond with ONLY raw valid JSON. No markdown. No backticks. No trailing commas. Just JSON starting with { and ending with }.
 
