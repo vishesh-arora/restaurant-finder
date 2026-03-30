@@ -81,7 +81,7 @@ Rules:
         locationRestriction: {
           circle: {
             center: { latitude: lat, longitude: lng },
-            radius: 2000,
+            radius: 3000,
           },
         },
       }),
@@ -90,12 +90,38 @@ Rules:
 
     const placesData = await textSearchRes.json()
 
-    if (!placesData.places || placesData.places.length === 0) {
+    // If no results with restriction, retry with larger radius
+    let places = placesData.places
+    if (!places || places.length === 0) {
+      const fallbackRes = await fetch('https://places.googleapis.com/v1/places:searchText', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY,
+          'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.priceLevel,places.editorialSummary,places.photos,places.types',
+        },
+        body: JSON.stringify({
+          textQuery: searchQuery,
+          maxResultCount: 20,
+          languageCode: 'en',
+          locationRestriction: {
+            circle: {
+              center: { latitude: lat, longitude: lng },
+              radius: 5000,
+            },
+          },
+        }),
+      })
+      const fallbackData = await fallbackRes.json()
+      places = fallbackData.places || []
+    }
+    
+    if (!places || places.length === 0) {
       return Response.json({ error: 'No results found. Try a different location or occasion.' }, { status: 400 })
     }
 
     // Step 4: Filter by minimum rating
-    const restaurantList = placesData.places
+    const restaurantList = places
       .filter(p => (p.rating || 0) >= 4.0)
       .map((p, i) => ({
         index: i + 1,
